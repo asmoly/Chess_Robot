@@ -112,7 +112,7 @@ class MultiHeadAttention(nn.Module):
         return out
   
 
-class TransformerEncoder(nn.Module):
+class TransformerBlock(nn.Module):
     def __init__(self, d_model, n_heads, r_mlp=4):
         super().__init__()
         self.d_model = d_model
@@ -148,7 +148,6 @@ class BoardSegmentTransformer(nn.Module):
     def __init__(self, d_model, img_size, patch_size, n_channels, n_heads, n_sa_blocks):
         super().__init__()        
 
-        # OLD: assert img_size[0] % patch_size[0] == 0 and img_size[1] % patch_size[1] == 0, "img_size dimensions must be divisible by patch_size dimensions"
         assert img_size[0] % 2 == 0 and img_size[1] % 2 == 0 and patch_size[0] % 2 == 0 and patch_size[1] % 2 == 0
         assert img_size[0] > patch_size[0] and img_size[1] > patch_size[1]
         assert (img_size[0]/2)%(patch_size[0]/2) == 0 and (img_size[1]/2)%(patch_size[1]/2) == 0
@@ -160,36 +159,31 @@ class BoardSegmentTransformer(nn.Module):
         self.n_channels = n_channels # Number of channels
         self.n_heads = n_heads # Number of attention heads
 
-        # OLD: self.n_patches = (self.img_size[0] * self.img_size[1]) // (self.patch_size[0] * self.patch_size[1])
         # img_size[0] is width, img_size[1] is height
         self.n_patches = int(((self.img_size[0]/2)/(self.patch_size[0]/2) - 1) * ((self.img_size[1]/2)/(self.patch_size[1]/2) - 1)) # -1 because last patch cannot be moved beyond border
-        self.max_seq_length = self.n_patches + 1 # add 2 extra tokens containing input and predicted arm poses
+        self.max_seq_length = self.n_patches + 1 # add 1 extra token containing board predicted token; IMPORTANT!
         self.patch_embedding = PatchEmbedding(self.d_model, self.img_size, self.patch_size, self.n_channels)
 
         self.positional_encoding = PositionalEncoding( self.d_model, self.max_seq_length)
-        self.transformer_encoder = nn.Sequential(*[TransformerEncoder( self.d_model, self.n_heads) for _ in range(n_sa_blocks)])
+        self.transformer_encoder = nn.Sequential(*[TransformerBlock( self.d_model, self.n_heads) for _ in range(n_sa_blocks)])
 
-        # Input pose mapper
-        self.pose_to_token = nn.Sequential(
-            nn.Linear(4, self.d_model), # 4 is the number of joint angles on the arm
-        )
-
-        # Pose predictor MLP
+        # Board corners predictor
         self.board_predictor = nn.Sequential(
-            nn.Linear(self.d_model, 8), # 4 is the number of joint angles on the arm
+            nn.Linear(d_model, d_model),
+            nn.GELU(),
+            nn.Linear(self.d_model, 8)
         )
 
-        self.board_coordinates = nn.Parameter(torch.randn(1, 1, d_model)) # pose prediction token
-        self.current_pose_token = torch.Tensor((1, 1, d_model)) # pose prediction token
+        self.board_token = nn.Parameter(torch.randn(1, 1, d_model)) # board corners prediction token
 
     def forward(self, images):
         x = self.patch_embedding(images)
 
         # Expand to have a predicted token for every frame in a batch
-        board_coordinates = self.board_coordinates.expand(x.size()[0], -1, -1)
+        board_token = self.board_token.expand(x.size()[0], -1, -1)
 
         # Adding special pose tokens to the beginning of each embedding
-        x = torch.cat((board_coordinates,x), dim=1)
+        x = torch.cat((board_token,x), dim=1)
         
         x = self.positional_encoding(x)
         

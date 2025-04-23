@@ -1,3 +1,7 @@
+# This program runs the training
+# To train set paramaters and launch
+# If PATH_TO_MODEL = None then it creates a new model
+
 import os
 import datetime
 
@@ -6,6 +10,7 @@ import torch.nn as nn
 import torchvision.transforms as T
 from torch.optim import AdamW
 import torchvision.transforms as transforms
+from torchvision import models, transforms
 from torch.utils.data import DataLoader
 
 import numpy as np
@@ -18,27 +23,27 @@ from data import *
 from models import *
 
 d_model = 16
-img_size = (640, 640)
-patch_size = (16, 16)
+img_size = (640, 640) # this will be reduced to 320x320 by conv2D before patchifying
+patch_size = (32, 32)
 n_channels = 3
 n_heads = 4
-n_sa_blocks = 8
+n_sa_blocks = 4
 start_epoch = 0
-n_epochs = 100
+n_epochs = 10000
 learning_rate = 0.001 # 0.005 -- works
-val_every_n_epoch = 3
-log_every_n_batches = 10
+val_every_n_epoch = 1
+log_every_n_batches = 2
 
-train_batch_size = 20
-test_batch_size = 1
+train_batch_size = 8
+test_batch_size = 4
 
-MAX_TRAIN_ID = 1447
+MAX_TRAIN_ID = 497
 MAX_TEST_ID = 19
 
-PATH_TO_TRAIN_ANNOTATIONS = "data/train/_annotations.coco.json"
-PATH_TO_TEST_ANNOTATIONS = "data/valid/_annotations.coco.json"
-PATH_TO_TRAIN_IMAGES = "data/train"
-PATH_TO_TEST_IMAGES = "data/valid"
+PATH_TO_TRAIN_ANNOTATIONS = "data2/train/_annotations.coco.json"
+PATH_TO_TEST_ANNOTATIONS = "data2/valid/_annotations.coco.json"
+PATH_TO_TRAIN_IMAGES = "data2/train"
+PATH_TO_TEST_IMAGES = "data2/valid"
 
 PATH_TO_LOGS = "logs/run"
 PATH_TO_MODEL = None
@@ -67,13 +72,12 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print("Using device: ", device, f"({torch.cuda.get_device_name(device)})" if torch.cuda.is_available() else "")
 
-    # Create arm model
     board_transformer_model = BoardSegmentTransformer(d_model, img_size, patch_size, n_channels, n_heads, n_sa_blocks).to(device)
     if PATH_TO_MODEL != None :
         board_transformer_model = load_model(PATH_TO_MODEL).to(device)
 
     optimizer = AdamW(board_transformer_model.parameters(), lr=learning_rate)
-    criterion = nn.L1Loss(reduction='mean')
+    criterion = nn.MSELoss(reduction='mean')
 
     # Train
     print("-- Starting training --")
@@ -117,8 +121,6 @@ def main():
 
                 image = image.astype(np.uint8)
                 image = image.copy()
-                target_coords = target_coords
-                predicted_coords = predicted_coords
 
                 target_image = draw_annotations_on_image(image, target_coords, normalized=True)
                 predicted_image = draw_annotations_on_image(image, predicted_coords, normalized=True)

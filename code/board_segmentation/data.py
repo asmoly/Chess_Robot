@@ -10,13 +10,15 @@ import cv2
 # PATH_TO_IMAGES = "data/train"
 # MAX_ID = 1447
 
+IMAGE_SIZE = 640
+
 dataTransformations = transforms.Compose([
     transforms.ColorJitter(brightness=(0.5,1.0)),
 ])
 
 def draw_annotations_on_image(image, annotations, normalized=False):
     if normalized == False:
-        annotations = annotations*640
+        annotations = annotations*IMAGE_SIZE
         annotations = annotations.reshape(4, 2)
         
     annotations = annotations.reshape((-1, 1, 2)).astype(np.int64)
@@ -47,7 +49,7 @@ class ChessboardDataset(Dataset):
             segmentation = np.array(image["segmentation"][0]).reshape((int(len(image["segmentation"][0])/2), 2)).astype(np.int64)
             segmentation = ChessboardDataset.approximate_segmentation_to_four_points(segmentation)
 
-            self.image_annotations[image["id"]] = segmentation.reshape(4, 2)
+            self.image_annotations[image["image_id"]] = segmentation.reshape(4, 2)
 
         print("Loaded Dataset")
 
@@ -87,7 +89,7 @@ class ChessboardDataset(Dataset):
         image = torch.from_numpy(image/255.0).float()
         image = torch.permute(image, (2, 0, 1))
 
-        image_segmentations = torch.from_numpy(image_segmentations/640.0).float()
+        image_segmentations = torch.from_numpy(image_segmentations/IMAGE_SIZE).float()
 
         if self.transform != None:
             image[:3, :, :] = self.transform(image[:3, :, :])
@@ -96,9 +98,11 @@ class ChessboardDataset(Dataset):
     
 # data = ChessboardDataset(path_to_data_annotations="data/train/_annotations.coco.json", path_to_images="data/train", max_id=1447)
 
-# for i in range (0, 100):
+# for i in range (0, 1200):
 #     image, image_segmentations = data.__getitem__(i)
-#     image = draw_annotations_on_image(image, image_segmentations.numpy(), normalized=True)
+#     image = np.transpose(image.numpy(), (1, 2, 0))
+#     print(np.max(image))
+#     image = draw_annotations_on_image((image*255).astype(np.uint8), image_segmentations.numpy()*IMAGE_SIZE, normalized=True)
 #     # image_segmentations = image_segmentations.reshape((-1, 1, 2)).astype(np.int64)
     
 #     # cv2.polylines(image, [image_segmentations], isClosed=False, color=(0, 255, 0), thickness=3)
